@@ -1,7 +1,5 @@
 name: Atlas conversion baseline
 on:
-  push:
-    paths: ['.github/workflows/atlas-baseline.yml']
   workflow_dispatch:
 permissions:
   contents: write
