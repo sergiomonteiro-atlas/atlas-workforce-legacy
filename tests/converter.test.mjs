@@ -1,0 +1,14 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {parseAgent,render,splitSoul,main,safeDirectory} from '../scripts/convert-atlas.mjs';
+const a=parseAgent('---\nname: Atlas Test\ndescription: "A colon: and a quote \\" safe"\ncolor: "#abcdef"\n---\n\n# Atlas Test\n\n## Identity\nIdentity text\n\n## Core Mission\nMission text\n','atlashub/atlas-test.md');
+test('portable parser reads quoted metadata and keeps stable source filenames',()=>{assert.equal(a.slug,'atlas-test');assert.equal(a.sourceSlug,'atlas-test');assert.equal(a.relative,'atlashub/atlas-test.md');assert.ok(a.description.includes('colon:'));assert.ok(a.body.startsWith('# Atlas Test'));});
+test('Atlas output preserves source hierarchy and identity output preserves source bytes',()=>{assert.equal(render('atlas-agent',a)['agents/atlashub/atlas-test.md'],a.source);for(const t of ['openbot','claude-code','copilot'])assert.equal(render(t,a)['agents/atlas-test.md'],a.source)});
+test('OpenClaw split keeps headings inside fenced code in their original section',()=>{const s=splitSoul('## Identity\nSoul\n```markdown\n## Core Mission\ncode\n```\n## Core Mission\nReal mission');assert.ok(s.soul.includes('## Core Mission\ncode'));assert.ok(s.agents.includes('Real mission'));assert.ok(!s.agents.includes('\ncode'));});
+test('mandatory tool renderers produce actual native-format output',()=>{assert.ok(render('openclaw',a)['atlas-test/SOUL.md'].includes('Identity text'));assert.ok(render('openclaw',a)['atlas-test/AGENTS.md'].includes('Mission text'));assert.match(render('cursor',a)['rules/atlas-test.mdc'],/alwaysApply: false/);assert.match(render('gemini-cli',a)['agents/atlas-test.md'],/name: 'atlas-test'/);assert.match(render('antigravity',a)['agency-atlas-test/SKILL.md'],/name: 'agency-atlas-test'/);assert.match(render('codex',a)['agents/atlas-test.toml'],/developer_instructions = /)});
+test('Qwen tools are mapped to canonical names and deduplicated',()=>{const s=render('qwen',{...a,tools:'Read, Write, Edit, MultiEdit, Bash'})['agents/atlas-test.md'];assert.match(s,/read_file, write_file, edit, run_shell_command/);assert.ok(!s.includes('MultiEdit'));});
+test('CLI rejects unknown options and tools before writing output',()=>{assert.throws(()=>main(['--tool','unknown']),/Unknown tool/);assert.throws(()=>main(['--tool']),/requires/);assert.throws(()=>main(['--invalid']),/Unknown option/);});
+test('output ancestor rejection happens before creating any directory',()=>{const link=path.resolve('linked-output');let writes=0;const io={existsSync:p=>p===link,lstatSync:()=>({isSymbolicLink:()=>true}),mkdirSync:()=>writes++};assert.throws(()=>safeDirectory(path.join(link,'nested'),io),/symlinked output ancestor/);assert.equal(writes,0)});
